@@ -1,10 +1,10 @@
 use anyhow::Result;
-use msedge_tts::{Client, SynthesisOutputFormat};
+use msedge_tts::tts::client::connect;
+use msedge_tts::{SpeechConfig, Voice};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tauri::Manager;
 
 fn get_results_dir() -> PathBuf {
     let exe_dir = env::current_exe()
@@ -30,38 +30,38 @@ pub struct TtsResult {
     pub path: String,
 }
 
+fn find_voice(voice_name: &str) -> Result<Voice> {
+    let voices = msedge_tts::voice::get_voices_list()?;
+    voices
+        .into_iter()
+        .find(|v| v.name == voice_name)
+        .ok_or_else(|| anyhow::anyhow!("Voice not found: {}", voice_name))
+}
+
 #[tauri::command]
 async fn generate_tts(text: String, voice: String, speed: f64) -> Result<String, String> {
     let results_dir = get_results_dir();
     let output_path = results_dir.join(format!("tts_{}.mp3", timestamp()));
 
-    // Convert speed (0.5-2.0) to rate factor
-    // speed=1.0 → rate=0, speed>1 → positive rate, speed<1 → negative rate
-    let rate = (speed - 1.0) * 100.0;
-
-    // Set up the Edge TTS client
-    let mut client = Client::new();
-    client
-        .set_voice(&voice)
-        .map_err(|e| e.to_string())?;
-
-    // Set output format to MP3
-    client
-        .set_output_format(SynthesisOutputFormat::AudioFormat_Mp3_Abr22050Hz)
-        .map_err(|e| e.to_string())?;
-
-    // Set rate (e.g. "+10%" or "-20%")
-    let rate_str = if rate >= 0.0 {
-        format!("+{:.0}%", rate)
+    // Convert speed (0.5-2.0) to rate percentage
+    let rate_pct = ((speed - 1.0) * 100.0).round() as i32;
+    let rate_str = if rate_pct >= 0 {
+        format!("+{}%", rate_pct)
     } else {
-        format!("{:.0}%", rate)
+        format!("{}%", rate_pct)
     };
-    client.set_rate(&rate_str).map_err(|e| e.to_string())?;
+
+    // Find the voice
+    let voice_obj = find_voice(&voice).map_err(|e| e.to_string())?;
+
+    // Build SpeechConfig from voice
+    let mut config = SpeechConfig::from(&voice_obj);
+    config.set_rate(&rate_str).map_err(|e| e.to_string())?;
 
     // Synthesize
+    let mut client = connect().map_err(|e| format!("failed to connect: {}", e))?;
     let audio = client
-        .synthesize(&text)
-        .await
+        .synthesize(&text, &config)
         .map_err(|e| format!("synthesis failed: {}", e))?;
 
     // Write to file
@@ -69,20 +69,6 @@ async fn generate_tts(text: String, voice: String, speed: f64) -> Result<String,
         .map_err(|e| format!("failed to write audio file: {}", e))?;
 
     Ok(output_path.to_string_lossy().to_string())
-}
-
-#[tauri::command]
-fn get_voices() -> Result<Vec<VoiceInfo>, String> {
-    // Return the same voice list as the frontend
-    // The frontend uses the same data, this is for potential future use
-    Ok(vec![])
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceInfo {
-    pub name: String,
-    pub label: String,
-    pub locale: String,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
