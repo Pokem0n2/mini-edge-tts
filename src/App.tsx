@@ -8,7 +8,6 @@ const VOICES: Record<string, { name: string; label: string; locale: string }[]> 
     { name: "zh-CN-YunxiNeural", label: "云希 (男声)", locale: "zh-CN" },
     { name: "zh-CN-YunyangNeural", label: "云扬 (新闻)", locale: "zh-CN" },
     { name: "zh-CN-XiaoyiNeural", label: "小艺 (女声)", locale: "zh-CN" },
-    { name: "zh-CN-YunfeiNeural", label: "云飞 (男声)", locale: "zh-CN" },
   ],
   "English": [
     { name: "en-US-AriaNeural", label: "Aria (US Female)", locale: "en-US" },
